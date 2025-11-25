@@ -8,6 +8,8 @@ import { ClipLoader } from "react-spinners";
 function ChatWindow() {
     const { prompt, setPrompt, reply, setReply, threadId, prevChats, setPrevChats, setNewChat } = useContext(MyContext);
     const [loading, setLoading] = useState(false);
+    const [uploadLoading, setUploadLoading] = useState(false);
+    const [uploadError, setUploadError] = useState(null);
     const [currentPrompt, setCurrentPrompt] = useState("");
 
     useEffect(() => {
@@ -20,6 +22,52 @@ function ChatWindow() {
             setReply(null);
         }
     }, [reply]);
+
+    // Handle file upload
+    const handleFileUpload = async (file) => {
+        setUploadError(null);
+        setUploadLoading(true);
+        setNewChat(false);
+
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("threadId", threadId);
+
+            // Add user message for file upload
+            setPrevChats(prev => [
+                ...prev,
+                { role: "user", content: `[Uploaded Resume: ${file.name}]` }
+            ]);
+
+            const response = await fetch("http://localhost:3000/api/chat", {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Failed to analyze resume");
+            }
+
+            const data = await response.json();
+            setReply(data.response);
+            
+            // Add assistant response
+            setPrevChats(prev => [
+                ...prev,
+                { role: "assistant", content: data.response.content }
+            ]);
+        } catch (error) {
+            console.error("Error uploading file:", error);
+            setUploadError(error.message || "Failed to upload file. Please try again.");
+            // Remove the user message if upload failed
+            setPrevChats(prev => prev.slice(0, -1));
+            setNewChat(true);
+        } finally {
+            setUploadLoading(false);
+        }
+    };
 
     const getReply = async () => {
         if (!prompt) return;
@@ -48,10 +96,20 @@ function ChatWindow() {
                 })
             });
 
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Failed to get response");
+            }
+
             const data = await response.json();
             setReply(data.response);
         } catch (error) {
             console.error("Error fetching reply:", error);
+            // Show error in chat
+            setPrevChats(prev => [
+                ...prev,
+                { role: "assistant", content: `Error: ${error.message}. Please try again.` }
+            ]);
         } finally {
             setLoading(false);
         }
@@ -66,7 +124,12 @@ function ChatWindow() {
 
             {/* Chat Messages Section */}
             <div className="chat-messages">
-                <Chat loading={loading} />
+                <Chat 
+                    loading={loading} 
+                    onFileUpload={handleFileUpload}
+                    uploadLoading={uploadLoading}
+                    uploadError={uploadError}
+                />
             </div>
 
             {/* Input Section */}
@@ -79,9 +142,9 @@ function ChatWindow() {
                         value={prompt || ""}
                         onChange={(e) => setPrompt(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && getReply()}
-                        disabled={loading}
+                        disabled={loading || uploadLoading}
                     />
-                    <button className="send-btn" onClick={getReply} disabled={loading}>
+                    <button className="send-btn" onClick={getReply} disabled={loading || uploadLoading}>
                         <i className="fa-solid fa-paper-plane"></i>
                     </button>
                 </div>
