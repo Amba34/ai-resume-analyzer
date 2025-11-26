@@ -48,6 +48,7 @@ jobs:
           docker build -t $IMAGE ./Backend
           docker push $IMAGE
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "✅ Backend image pushed: $IMAGE"
 
       - name: Build and push Frontend image
         id: frontend-image
@@ -57,6 +58,13 @@ jobs:
           docker build -t $IMAGE ./Frontend
           docker push $IMAGE
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "✅ Frontend image pushed: $IMAGE"
+
+      # Debug: Show outputs
+      - name: Debug - Show image outputs
+        run: |
+          echo "Backend image output: ${{ steps.backend-image.outputs.image }}"
+          echo "Frontend image output: ${{ steps.frontend-image.outputs.image }}"
 
   # ─────────────────────────────────────────────────────────────
   # Deploy Backend to Cloud Run
@@ -80,28 +88,36 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      # Debug: Show received image
+      - name: Debug - Show received image
+        run: |
+          echo "Received backend image: ${{ needs.build-and-push.outputs.backend-image }}"
+          if [ -z "${{ needs.build-and-push.outputs.backend-image }}" ]; then
+            echo "❌ ERROR: Backend image is empty!"
+            exit 1
+          fi
+
       - name: Deploy Backend to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.BACKEND_SERVICE }}
-          region: ${{ env.REGION }}
-          image: ${{ needs.build-and-push.outputs.backend-image }}
-          env_vars: |
-            NODE_ENV=production
-            MONGODB_URI=${{ secrets.MONGODB_URI }}
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          flags: |
-            --allow-unauthenticated
-            --memory=512Mi
-            --cpu=1
-            --min-instances=0
-            --max-instances=10
-            --port=3000
-
-      - name: Show Backend URL
         run: |
-          echo "✅ Backend deployed to: ${{ steps.deploy.outputs.url }}"
+          IMAGE="${{ needs.build-and-push.outputs.backend-image }}"
+          echo "Deploying image: $IMAGE"
+          
+          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+            --image="$IMAGE" \
+            --region=${{ env.REGION }} \
+            --allow-unauthenticated \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --port=3000 \
+            --set-env-vars="NODE_ENV=production,MONGODB_URI=${{ secrets.MONGODB_URI }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" \
+            --format=json > deploy_output.json
+          
+          URL=$(cat deploy_output.json | jq -r '.status.url')
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "✅ Backend deployed to: $URL"
 
   # ─────────────────────────────────────────────────────────────
   # Deploy Frontend to Cloud Run
@@ -122,25 +138,42 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      # Debug: Show received values
+      - name: Debug - Show received values
+        run: |
+          echo "Received frontend image: ${{ needs.build-and-push.outputs.frontend-image }}"
+          echo "Received backend URL: ${{ needs.deploy-backend.outputs.backend-url }}"
+          if [ -z "${{ needs.build-and-push.outputs.frontend-image }}" ]; then
+            echo "❌ ERROR: Frontend image is empty!"
+            exit 1
+          fi
+
       - name: Deploy Frontend to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.FRONTEND_SERVICE }}
-          region: ${{ env.REGION }}
-          image: ${{ needs.build-and-push.outputs.frontend-image }}
-          env_vars: |
-            VITE_API_URL=${{ needs.deploy-backend.outputs.backend-url }}
-          flags: |
-            --allow-unauthenticated
-            --memory=256Mi
-            --cpu=1
-            --min-instances=0
-            --max-instances=5
-            --port=80
-
-      - name: Show Deployment URLs
         run: |
+          IMAGE="${{ needs.build-and-push.outputs.frontend-image }}"
+          BACKEND_URL="${{ needs.deploy-backend.outputs.backend-url }}"
+          echo "Deploying frontend image: $IMAGE"
+          echo "Using backend URL: $BACKEND_URL"
+          
+          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
+            --image="$IMAGE" \
+            --region=${{ env.REGION }} \
+            --allow-unauthenticated \
+            --memory=256Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --port=80 \
+            --set-env-vars="VITE_API_URL=$BACKEND_URL" \
+            --format=json > deploy_output.json
+          
+          URL=$(cat deploy_output.json | jq -r '.status.url')
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "✅ Frontend deployed to: $URL"
+
+      - name: Show Final URLs
+        run: |
+          echo "🎉 Deployment Complete!"
           echo "✅ Backend URL: ${{ needs.deploy-backend.outputs.backend-url }}"
           echo "✅ Frontend URL: ${{ steps.deploy.outputs.url }}"
-          echo "🎉 Deployment complete!"
