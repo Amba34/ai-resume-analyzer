@@ -1,11 +1,10 @@
-import OpenAI from "openai";
-import dotenv from "dotenv";
 import express from "express";
+import mongoose from "mongoose";
 import cors from "cors";
-import mongoose from 'mongoose'
-import chatRoutes from "./routes/chat.js";
+import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import chatRoutes from "./routes/chat.js";
 import logger, { requestLogger, errorLogger } from "./utils/logger.js";
 import { healthCheck, metricsCheck, readinessCheck, livenessCheck } from "./utils/health.js";
 
@@ -17,32 +16,34 @@ const app = express();
 dotenv.config();
 
 // Set Google Cloud credentials path (absolute path)
-process.env.GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS || 
-  path.resolve(__dirname, "gen-lang-client-0514898714-71b9c5ae081a.json");
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !path.isAbsolute(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(__dirname, "gen-lang-client-0514898714-71b9c5ae081a.json");
+}
 
 // ─────────────────────────────────────────────────────────────
-// Health & Monitoring Endpoints (before other middleware)
+// Middleware
+// ─────────────────────────────────────────────────────────────
+app.use(cors());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(requestLogger);
+
+// ─────────────────────────────────────────────────────────────
+// Health & Monitoring Endpoints (before other routes)
 // ─────────────────────────────────────────────────────────────
 app.get('/health', healthCheck);
 app.get('/metrics', metricsCheck);
 app.get('/ready', readinessCheck);
 app.get('/live', livenessCheck);
 
-// ─────────────────────────────────────────────────────────────
-// Middleware
-// ─────────────────────────────────────────────────────────────
-app.use(requestLogger);  // HTTP request logging
-app.use(express.json());
-app.use(cors());
-
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => logger.info("Connected to MongoDB"))
-  .catch((err) => logger.error("MongoDB connection error:", { error: err.message }));
-
-const openai = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+// Basic route
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "AI Resume Analyzer API",
+    status: "running",
+    timestamp: new Date().toISOString(),
+    version: "1.0.0"
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -55,37 +56,61 @@ app.use("/api", chatRoutes);
 // ─────────────────────────────────────────────────────────────
 app.use(errorLogger);
 app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', err);
   res.status(err.status || 500).json({
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
   });
 });
 
-// ─────────────────────────────────────────────────────────────
-// Start Server
-// ─────────────────────────────────────────────────────────────
+// 404 handler
+app.use((req, res) => {
+  logger.warn(`404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({ error: "Route not found" });
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`, { 
-    env: process.env.NODE_ENV || 'development',
-    port: PORT 
-  });
-});
 
-app.post("/test", async (req, res) => {
+// ─────────────────────────────────────────────────────────────
+// Start Server Function
+// ─────────────────────────────────────────────────────────────
+async function startServer() {
+  try {
+    // Start server first (for health checks)
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`🚀 Server running on port ${PORT}`);
+      logger.info(`📋 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
 
-  const query = req.body.query;
-  const response = await openai.chat.completions.create({
-    model: "gemini-2.0-flash",
-    messages: [
-      { role: "system", content: "You are a helpful assistant." },
-      {
-        role: "user",
-        content: req.body.query,
-      },
-    ],
-  });
-  res.send(response.choices[0].message);
-});
+    // Connect to MongoDB after server starts (non-blocking)
+    if (process.env.MONGODB_URI) {
+      logger.info('🔌 Connecting to MongoDB...');
+      try {
+        await mongoose.connect(process.env.MONGODB_URI);
+        logger.info('✅ Connected to MongoDB successfully');
+      } catch (error) {
+        logger.error('⚠️  MongoDB connection failed, continuing without database:', error.message);
+      }
+    } else {
+      logger.warn('⚠️  No MONGODB_URI provided, running without database');
+    }
+
+    // Graceful shutdown
+    process.on('SIGTERM', async () => {
+      logger.info('📴 SIGTERM received, shutting down gracefully...');
+      server.close(() => {
+        mongoose.connection.close();
+        process.exit(0);
+      });
+    });
+
+  } catch (error) {
+    logger.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
 
 
 
