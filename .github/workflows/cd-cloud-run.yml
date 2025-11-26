@@ -3,25 +3,22 @@ name: CD - Deploy to Cloud Run
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
-  BACKEND_SERVICE: ai-resume-backend
-  FRONTEND_SERVICE: ai-resume-frontend
+  REGISTRY: gcr.io
+  BACKEND_IMAGE: gcr.io/${{ secrets.GCP_PROJECT_ID }}/ai-resume-backend:${{ github.sha }}
+  FRONTEND_IMAGE: gcr.io/${{ secrets.GCP_PROJECT_ID }}/ai-resume-frontend:${{ github.sha }}
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Build and Push Docker Images
+  # Build Images
   # ─────────────────────────────────────────────────────────────
-  build-and-push:
-    name: Build & Push to GCR
+  build:
+    name: Build Images
     runs-on: ubuntu-latest
-
-    outputs:
-      backend-image: ${{ steps.backend-build.outputs.image }}
-      frontend-image: ${{ steps.frontend-build.outputs.image }}
 
     steps:
       - name: Checkout code
@@ -37,47 +34,33 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Configure Docker for GCR
+      - name: Configure Docker
         run: gcloud auth configure-docker
 
-      - name: Build and push Backend image
-        id: backend-build
+      - name: Build and Push Backend
         run: |
-          BACKEND_IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}"
-          echo "Building backend image: $BACKEND_IMAGE"
-          docker build -t $BACKEND_IMAGE ./Backend
-          echo "Pushing backend image: $BACKEND_IMAGE"
-          docker push $BACKEND_IMAGE
-          echo "image=$BACKEND_IMAGE" >> $GITHUB_OUTPUT
-          echo "✅ Backend image built and pushed: $BACKEND_IMAGE"
+          echo "🔨 Building backend: ${{ env.BACKEND_IMAGE }}"
+          docker build -t ${{ env.BACKEND_IMAGE }} ./Backend
+          docker push ${{ env.BACKEND_IMAGE }}
+          echo "✅ Backend pushed: ${{ env.BACKEND_IMAGE }}"
 
-      - name: Build and push Frontend image
-        id: frontend-build
+      - name: Build and Push Frontend
         run: |
-          FRONTEND_IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}"
-          echo "Building frontend image: $FRONTEND_IMAGE"
-          docker build -t $FRONTEND_IMAGE ./Frontend
-          echo "Pushing frontend image: $FRONTEND_IMAGE"
-          docker push $FRONTEND_IMAGE
-          echo "image=$FRONTEND_IMAGE" >> $GITHUB_OUTPUT
-          echo "✅ Frontend image built and pushed: $FRONTEND_IMAGE"
-
-      - name: Verify outputs
-        run: |
-          echo "📋 Build job outputs:"
-          echo "  Backend image: ${{ steps.backend-build.outputs.image }}"
-          echo "  Frontend image: ${{ steps.frontend-build.outputs.image }}"
+          echo "🔨 Building frontend: ${{ env.FRONTEND_IMAGE }}"
+          docker build -t ${{ env.FRONTEND_IMAGE }} ./Frontend
+          docker push ${{ env.FRONTEND_IMAGE }}
+          echo "✅ Frontend pushed: ${{ env.FRONTEND_IMAGE }}"
 
   # ─────────────────────────────────────────────────────────────
-  # Deploy Backend to Cloud Run
+  # Deploy Backend
   # ─────────────────────────────────────────────────────────────
   deploy-backend:
     name: Deploy Backend
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: build
     
     outputs:
-      backend-url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.deploy.outputs.url }}
 
     steps:
       - name: Authenticate to Google Cloud
@@ -90,35 +73,14 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Verify inputs
-        run: |
-          echo "📋 Deployment inputs:"
-          echo "  Backend image: '${{ needs.build-and-push.outputs.backend-image }}'"
-          echo "  Service name: '${{ env.BACKEND_SERVICE }}'"
-          echo "  Region: '${{ env.REGION }}'"
-          
-          if [ -z "${{ needs.build-and-push.outputs.backend-image }}" ]; then
-            echo "❌ ERROR: Backend image is empty!"
-            echo "Available outputs from build job:"
-            echo "${{ toJSON(needs.build-and-push.outputs) }}"
-            exit 1
-          fi
-
-      - name: Deploy Backend to Cloud Run
+      - name: Deploy Backend
         id: deploy
         run: |
-          IMAGE="${{ needs.build-and-push.outputs.backend-image }}"
-          SERVICE="${{ env.BACKEND_SERVICE }}"
-          REGION="${{ env.REGION }}"
+          echo "🚀 Deploying backend: ${{ env.BACKEND_IMAGE }}"
           
-          echo "🚀 Deploying backend..."
-          echo "  Image: $IMAGE"
-          echo "  Service: $SERVICE"
-          echo "  Region: $REGION"
-          
-          gcloud run deploy "$SERVICE" \
-            --image="$IMAGE" \
-            --region="$REGION" \
+          gcloud run deploy ai-resume-backend \
+            --image="${{ env.BACKEND_IMAGE }}" \
+            --region="${{ env.REGION }}" \
             --platform=managed \
             --allow-unauthenticated \
             --memory=512Mi \
@@ -127,20 +89,19 @@ jobs:
             --max-instances=10 \
             --port=3000 \
             --set-env-vars="NODE_ENV=production,MONGODB_URI=${{ secrets.MONGODB_URI }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" \
-            --format="value(status.url)" > backend_url.txt
+            --quiet
           
-          BACKEND_URL=$(cat backend_url.txt)
-          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
-          echo "✅ Backend deployed successfully!"
-          echo "   URL: $BACKEND_URL"
+          URL=$(gcloud run services describe ai-resume-backend --region=${{ env.REGION }} --format="value(status.url)")
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "✅ Backend deployed: $URL"
 
   # ─────────────────────────────────────────────────────────────
-  # Deploy Frontend to Cloud Run
+  # Deploy Frontend
   # ─────────────────────────────────────────────────────────────
   deploy-frontend:
     name: Deploy Frontend
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-backend]
+    needs: [build, deploy-backend]
 
     steps:
       - name: Authenticate to Google Cloud
@@ -153,34 +114,15 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Verify inputs
+      - name: Deploy Frontend
         run: |
-          echo "📋 Frontend deployment inputs:"
-          echo "  Frontend image: '${{ needs.build-and-push.outputs.frontend-image }}'"
-          echo "  Backend URL: '${{ needs.deploy-backend.outputs.backend-url }}'"
+          BACKEND_URL="${{ needs.deploy-backend.outputs.url }}"
+          echo "🚀 Deploying frontend: ${{ env.FRONTEND_IMAGE }}"
+          echo "🔗 Backend URL: $BACKEND_URL"
           
-          if [ -z "${{ needs.build-and-push.outputs.frontend-image }}" ]; then
-            echo "❌ ERROR: Frontend image is empty!"
-            exit 1
-          fi
-
-      - name: Deploy Frontend to Cloud Run
-        id: deploy
-        run: |
-          IMAGE="${{ needs.build-and-push.outputs.frontend-image }}"
-          BACKEND_URL="${{ needs.deploy-backend.outputs.backend-url }}"
-          SERVICE="${{ env.FRONTEND_SERVICE }}"
-          REGION="${{ env.REGION }}"
-          
-          echo "🚀 Deploying frontend..."
-          echo "  Image: $IMAGE"
-          echo "  Backend URL: $BACKEND_URL"
-          echo "  Service: $SERVICE"
-          echo "  Region: $REGION"
-          
-          gcloud run deploy "$SERVICE" \
-            --image="$IMAGE" \
-            --region="$REGION" \
+          gcloud run deploy ai-resume-frontend \
+            --image="${{ env.FRONTEND_IMAGE }}" \
+            --region="${{ env.REGION }}" \
             --platform=managed \
             --allow-unauthenticated \
             --memory=256Mi \
@@ -189,18 +131,14 @@ jobs:
             --max-instances=5 \
             --port=80 \
             --set-env-vars="VITE_API_URL=$BACKEND_URL" \
-            --format="value(status.url)" > frontend_url.txt
+            --quiet
           
-          FRONTEND_URL=$(cat frontend_url.txt)
-          echo "url=$FRONTEND_URL" >> $GITHUB_OUTPUT
-          echo "✅ Frontend deployed successfully!"
-          echo "   URL: $FRONTEND_URL"
+          FRONTEND_URL=$(gcloud run services describe ai-resume-frontend --region=${{ env.REGION }} --format="value(status.url)")
+          echo "✅ Frontend deployed: $FRONTEND_URL"
 
-      - name: Show Final URLs
+      - name: Show Results
         run: |
-          echo ""
           echo "🎉 Deployment Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Backend:  ${{ needs.deploy-backend.outputs.backend-url }}"
-          echo "✅ Frontend: ${{ steps.deploy.outputs.url }}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Backend:  ${{ needs.deploy-backend.outputs.url }}"
+          FRONTEND_URL=$(gcloud run services describe ai-resume-frontend --region=${{ env.REGION }} --format="value(status.url)")
+          echo "✅ Frontend: $FRONTEND_URL"
