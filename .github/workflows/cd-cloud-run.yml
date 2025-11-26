@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      backend-image: ${{ steps.set-outputs.outputs.backend-image }}
-      frontend-image: ${{ steps.set-outputs.outputs.frontend-image }}
+      backend-image: ${{ steps.backend-build.outputs.image }}
+      frontend-image: ${{ steps.frontend-build.outputs.image }}
 
     steps:
       - name: Checkout code
@@ -41,33 +41,32 @@ jobs:
         run: gcloud auth configure-docker
 
       - name: Build and push Backend image
+        id: backend-build
         run: |
           BACKEND_IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}"
           echo "Building backend image: $BACKEND_IMAGE"
           docker build -t $BACKEND_IMAGE ./Backend
           echo "Pushing backend image: $BACKEND_IMAGE"
           docker push $BACKEND_IMAGE
-          echo "BACKEND_IMAGE=$BACKEND_IMAGE" >> $GITHUB_ENV
+          echo "image=$BACKEND_IMAGE" >> $GITHUB_OUTPUT
           echo "✅ Backend image built and pushed: $BACKEND_IMAGE"
 
       - name: Build and push Frontend image
+        id: frontend-build
         run: |
           FRONTEND_IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}"
           echo "Building frontend image: $FRONTEND_IMAGE"
           docker build -t $FRONTEND_IMAGE ./Frontend
           echo "Pushing frontend image: $FRONTEND_IMAGE"
           docker push $FRONTEND_IMAGE
-          echo "FRONTEND_IMAGE=$FRONTEND_IMAGE" >> $GITHUB_ENV
+          echo "image=$FRONTEND_IMAGE" >> $GITHUB_OUTPUT
           echo "✅ Frontend image built and pushed: $FRONTEND_IMAGE"
 
-      - name: Set job outputs
-        id: set-outputs
+      - name: Verify outputs
         run: |
-          echo "backend-image=${{ env.BACKEND_IMAGE }}" >> $GITHUB_OUTPUT
-          echo "frontend-image=${{ env.FRONTEND_IMAGE }}" >> $GITHUB_OUTPUT
-          echo "📋 Job outputs set:"
-          echo "  Backend: ${{ env.BACKEND_IMAGE }}"
-          echo "  Frontend: ${{ env.FRONTEND_IMAGE }}"
+          echo "📋 Build job outputs:"
+          echo "  Backend image: ${{ steps.backend-build.outputs.image }}"
+          echo "  Frontend image: ${{ steps.frontend-build.outputs.image }}"
 
   # ─────────────────────────────────────────────────────────────
   # Deploy Backend to Cloud Run
