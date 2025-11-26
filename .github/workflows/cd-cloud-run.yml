@@ -1,11 +1,3 @@
-# ─────────────────────────────────────────────────────────────
-# CD Pipeline - Deploy to Google Cloud Run
-# ─────────────────────────────────────────────────────────────
-# Triggers on push to main branch (after CI passes)
-# Builds and pushes Docker images to Google Container Registry
-# Deploys to Cloud Run
-# ─────────────────────────────────────────────────────────────
-
 name: CD - Deploy to Cloud Run
 
 on:
