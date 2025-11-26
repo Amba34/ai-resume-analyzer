@@ -52,6 +52,7 @@ jobs:
         id: backend-image
         run: |
           IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}"
+          echo "Building backend image: $IMAGE"
           docker build -t $IMAGE ./Backend
           docker push $IMAGE
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
@@ -60,6 +61,7 @@ jobs:
         id: frontend-image
         run: |
           IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}"
+          echo "Building frontend image: $IMAGE"
           docker build -t $IMAGE ./Frontend
           docker push $IMAGE
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
@@ -71,6 +73,9 @@ jobs:
     name: Deploy Backend
     runs-on: ubuntu-latest
     needs: build-and-push
+    
+    outputs:
+      backend-url: ${{ steps.deploy.outputs.url }}
 
     steps:
       - name: Authenticate to Google Cloud
@@ -78,7 +83,13 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Deploy to Cloud Run
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Deploy Backend to Cloud Run
+        id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.BACKEND_SERVICE }}
@@ -98,8 +109,7 @@ jobs:
 
       - name: Show Backend URL
         run: |
-          URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region=${{ env.REGION }} --format='value(status.url)')
-          echo "✅ Backend deployed to: $URL"
+          echo "✅ Backend deployed to: ${{ steps.deploy.outputs.url }}"
 
   # ─────────────────────────────────────────────────────────────
   # Deploy Frontend to Cloud Run
@@ -115,20 +125,20 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Get Backend URL
-        id: backend-url
-        run: |
-          URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region=${{ env.REGION }} --format='value(status.url)')
-          echo "url=$URL" >> $GITHUB_OUTPUT
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
-      - name: Deploy to Cloud Run
+      - name: Deploy Frontend to Cloud Run
+        id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.FRONTEND_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ needs.build-and-push.outputs.frontend-image }}
           env_vars: |
-            VITE_API_URL=${{ steps.backend-url.outputs.url }}
+            VITE_API_URL=${{ needs.deploy-backend.outputs.backend-url }}
           flags: |
             --allow-unauthenticated
             --memory=256Mi
@@ -137,8 +147,8 @@ jobs:
             --max-instances=5
             --port=80
 
-      - name: Show Frontend URL
+      - name: Show Deployment URLs
         run: |
-          URL=$(gcloud run services describe ${{ env.FRONTEND_SERVICE }} --region=${{ env.REGION }} --format='value(status.url)')
-          echo "✅ Frontend deployed to: $URL"
+          echo "✅ Backend URL: ${{ needs.deploy-backend.outputs.backend-url }}"
+          echo "✅ Frontend URL: ${{ steps.deploy.outputs.url }}"
           echo "🎉 Deployment complete!"
