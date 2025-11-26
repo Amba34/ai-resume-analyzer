@@ -93,7 +93,7 @@ jobs:
       - name: Verify inputs
         run: |
           echo "📋 Deployment inputs:"
-          echo "  Backend image: '${{ needs.build-and-push.outputs.backend-image }}'"
+          echo "  Backend image: '${{ needs.build-and-push.outputs }}'"
           echo "  Service name: '${{ env.BACKEND_SERVICE }}'"
           echo "  Region: '${{ env.REGION }}'"
           
