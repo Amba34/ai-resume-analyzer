@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      backend-image: ${{ steps.backend-image.outputs.image }}
-      frontend-image: ${{ steps.frontend-image.outputs.image }}
+      backend-image: ${{ steps.set-outputs.outputs.backend-image }}
+      frontend-image: ${{ steps.set-outputs.outputs.frontend-image }}
 
     steps:
       - name: Checkout code
@@ -41,30 +41,33 @@ jobs:
         run: gcloud auth configure-docker
 
       - name: Build and push Backend image
-        id: backend-image
         run: |
-          IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}"
-          echo "Building backend image: $IMAGE"
-          docker build -t $IMAGE ./Backend
-          docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-          echo "✅ Backend image pushed: $IMAGE"
+          BACKEND_IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}"
+          echo "Building backend image: $BACKEND_IMAGE"
+          docker build -t $BACKEND_IMAGE ./Backend
+          echo "Pushing backend image: $BACKEND_IMAGE"
+          docker push $BACKEND_IMAGE
+          echo "BACKEND_IMAGE=$BACKEND_IMAGE" >> $GITHUB_ENV
+          echo "✅ Backend image built and pushed: $BACKEND_IMAGE"
 
       - name: Build and push Frontend image
-        id: frontend-image
         run: |
-          IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}"
-          echo "Building frontend image: $IMAGE"
-          docker build -t $IMAGE ./Frontend
-          docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-          echo "✅ Frontend image pushed: $IMAGE"
+          FRONTEND_IMAGE="gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}"
+          echo "Building frontend image: $FRONTEND_IMAGE"
+          docker build -t $FRONTEND_IMAGE ./Frontend
+          echo "Pushing frontend image: $FRONTEND_IMAGE"
+          docker push $FRONTEND_IMAGE
+          echo "FRONTEND_IMAGE=$FRONTEND_IMAGE" >> $GITHUB_ENV
+          echo "✅ Frontend image built and pushed: $FRONTEND_IMAGE"
 
-      # Debug: Show outputs
-      - name: Debug - Show image outputs
+      - name: Set job outputs
+        id: set-outputs
         run: |
-          echo "Backend image output: ${{ steps.backend-image.outputs.image }}"
-          echo "Frontend image output: ${{ steps.frontend-image.outputs.image }}"
+          echo "backend-image=${{ env.BACKEND_IMAGE }}" >> $GITHUB_OUTPUT
+          echo "frontend-image=${{ env.FRONTEND_IMAGE }}" >> $GITHUB_OUTPUT
+          echo "📋 Job outputs set:"
+          echo "  Backend: ${{ env.BACKEND_IMAGE }}"
+          echo "  Frontend: ${{ env.FRONTEND_IMAGE }}"
 
   # ─────────────────────────────────────────────────────────────
   # Deploy Backend to Cloud Run
@@ -88,12 +91,17 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      # Debug: Show received image
-      - name: Debug - Show received image
+      - name: Verify inputs
         run: |
-          echo "Received backend image: ${{ needs.build-and-push.outputs.backend-image }}"
+          echo "📋 Deployment inputs:"
+          echo "  Backend image: '${{ needs.build-and-push.outputs.backend-image }}'"
+          echo "  Service name: '${{ env.BACKEND_SERVICE }}'"
+          echo "  Region: '${{ env.REGION }}'"
+          
           if [ -z "${{ needs.build-and-push.outputs.backend-image }}" ]; then
             echo "❌ ERROR: Backend image is empty!"
+            echo "Available outputs from build job:"
+            echo "${{ toJSON(needs.build-and-push.outputs) }}"
             exit 1
           fi
 
@@ -101,11 +109,18 @@ jobs:
         id: deploy
         run: |
           IMAGE="${{ needs.build-and-push.outputs.backend-image }}"
-          echo "Deploying image: $IMAGE"
+          SERVICE="${{ env.BACKEND_SERVICE }}"
+          REGION="${{ env.REGION }}"
           
-          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+          echo "🚀 Deploying backend..."
+          echo "  Image: $IMAGE"
+          echo "  Service: $SERVICE"
+          echo "  Region: $REGION"
+          
+          gcloud run deploy "$SERVICE" \
             --image="$IMAGE" \
-            --region=${{ env.REGION }} \
+            --region="$REGION" \
+            --platform=managed \
             --allow-unauthenticated \
             --memory=512Mi \
             --cpu=1 \
@@ -113,11 +128,12 @@ jobs:
             --max-instances=10 \
             --port=3000 \
             --set-env-vars="NODE_ENV=production,MONGODB_URI=${{ secrets.MONGODB_URI }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" \
-            --format=json > deploy_output.json
+            --format="value(status.url)" > backend_url.txt
           
-          URL=$(cat deploy_output.json | jq -r '.status.url')
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "✅ Backend deployed to: $URL"
+          BACKEND_URL=$(cat backend_url.txt)
+          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
+          echo "✅ Backend deployed successfully!"
+          echo "   URL: $BACKEND_URL"
 
   # ─────────────────────────────────────────────────────────────
   # Deploy Frontend to Cloud Run
@@ -138,11 +154,12 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      # Debug: Show received values
-      - name: Debug - Show received values
+      - name: Verify inputs
         run: |
-          echo "Received frontend image: ${{ needs.build-and-push.outputs.frontend-image }}"
-          echo "Received backend URL: ${{ needs.deploy-backend.outputs.backend-url }}"
+          echo "📋 Frontend deployment inputs:"
+          echo "  Frontend image: '${{ needs.build-and-push.outputs.frontend-image }}'"
+          echo "  Backend URL: '${{ needs.deploy-backend.outputs.backend-url }}'"
+          
           if [ -z "${{ needs.build-and-push.outputs.frontend-image }}" ]; then
             echo "❌ ERROR: Frontend image is empty!"
             exit 1
@@ -153,12 +170,19 @@ jobs:
         run: |
           IMAGE="${{ needs.build-and-push.outputs.frontend-image }}"
           BACKEND_URL="${{ needs.deploy-backend.outputs.backend-url }}"
-          echo "Deploying frontend image: $IMAGE"
-          echo "Using backend URL: $BACKEND_URL"
+          SERVICE="${{ env.FRONTEND_SERVICE }}"
+          REGION="${{ env.REGION }}"
           
-          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
+          echo "🚀 Deploying frontend..."
+          echo "  Image: $IMAGE"
+          echo "  Backend URL: $BACKEND_URL"
+          echo "  Service: $SERVICE"
+          echo "  Region: $REGION"
+          
+          gcloud run deploy "$SERVICE" \
             --image="$IMAGE" \
-            --region=${{ env.REGION }} \
+            --region="$REGION" \
+            --platform=managed \
             --allow-unauthenticated \
             --memory=256Mi \
             --cpu=1 \
@@ -166,14 +190,18 @@ jobs:
             --max-instances=5 \
             --port=80 \
             --set-env-vars="VITE_API_URL=$BACKEND_URL" \
-            --format=json > deploy_output.json
+            --format="value(status.url)" > frontend_url.txt
           
-          URL=$(cat deploy_output.json | jq -r '.status.url')
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "✅ Frontend deployed to: $URL"
+          FRONTEND_URL=$(cat frontend_url.txt)
+          echo "url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+          echo "✅ Frontend deployed successfully!"
+          echo "   URL: $FRONTEND_URL"
 
       - name: Show Final URLs
         run: |
+          echo ""
           echo "🎉 Deployment Complete!"
-          echo "✅ Backend URL: ${{ needs.deploy-backend.outputs.backend-url }}"
-          echo "✅ Frontend URL: ${{ steps.deploy.outputs.url }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Backend:  ${{ needs.deploy-backend.outputs.backend-url }}"
+          echo "✅ Frontend: ${{ steps.deploy.outputs.url }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
