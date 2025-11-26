@@ -184,6 +184,87 @@ POST /api/chat
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
+## 🐳 Docker Deployment
+
+### Local Development with Docker Compose
+
+```bash
+# Start all services (MongoDB, Backend, Frontend)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes
+docker-compose down -v
+```
+
+Access the app at `http://localhost` (Frontend) and `http://localhost:3000` (Backend API)
+
+### Build Individual Images
+
+```bash
+# Backend
+cd Backend
+docker build -t ai-resume-backend .
+docker run -p 3000:3000 --env-file .env ai-resume-backend
+
+# Frontend
+cd Frontend
+docker build -t ai-resume-frontend .
+docker run -p 80:80 ai-resume-frontend
+```
+
+## 🚀 CI/CD Pipeline
+
+### Continuous Integration (CI)
+- Triggers on push/PR to `main` branch
+- Runs linting and tests for both Backend and Frontend
+- Builds Docker images to verify they work
+- Uploads frontend build artifacts
+
+### Continuous Deployment (CD)
+Two deployment options available:
+
+**Option 1: Google Cloud Run** (`.github/workflows/cd-cloud-run.yml`)
+- Pushes images to Google Container Registry
+- Deploys to Cloud Run with auto-scaling
+
+**Option 2: Docker Hub** (`.github/workflows/cd-dockerhub.yml`)
+- Pushes images to Docker Hub
+- Use for any cloud provider (AWS, DigitalOcean, etc.)
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `GCP_PROJECT_ID` | Google Cloud project ID |
+| `GCP_SA_KEY` | Service account JSON key |
+| `MONGODB_URI` | MongoDB connection string |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `DOCKERHUB_USERNAME` | Docker Hub username |
+| `DOCKERHUB_TOKEN` | Docker Hub access token |
+
+## 📊 Monitoring & Health Checks
+
+### Health Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Overall health status + MongoDB connection |
+| `GET /metrics` | Detailed system metrics (memory, CPU, uptime) |
+| `GET /ready` | Readiness check for Kubernetes/Cloud Run |
+| `GET /live` | Liveness check for Kubernetes/Cloud Run |
+
+### Structured Logging
+- Winston logger with JSON format for production
+- Colored console output for development
+- HTTP request logging (method, URL, status, duration)
+- Error tracking with stack traces
+
 ## 🤝 Contributing
 
 1. Fork the repository

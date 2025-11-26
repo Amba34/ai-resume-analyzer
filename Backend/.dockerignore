@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Environment files (injected at runtime)
+.env
+.env.*
+
+# Credentials (injected at runtime)
+*.json
+!package*.json
+
+# Uploads (mounted as volume)
+uploads/*
+!uploads/.gitkeep
+
+# Development files
+.git
+.gitignore
+*.md
+.vscode
+.idea
+
+# Test files
+__tests__
+*.test.js
+*.spec.js
+coverage
+.nyc_output
+
+# Logs
+logs
+*.log
