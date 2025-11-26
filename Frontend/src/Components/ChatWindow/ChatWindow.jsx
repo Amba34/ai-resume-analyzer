@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect, useRef } from "react";
+import { useContext, useState, useEffect } from "react";
 import "./ChatWindow.css";
 import Chat from "../Chat/Chat";
 import { MyContext } from "../../MyContext";
@@ -6,7 +6,7 @@ import { ClipLoader } from "react-spinners";
 
 
 function ChatWindow() {
-    const { prompt, setPrompt, reply, setReply, threadId, prevChats, setPrevChats, setNewChat } = useContext(MyContext);
+    const { prompt, setPrompt, reply, setReply, threadId, setPrevChats, setNewChat } = useContext(MyContext);
     const [loading, setLoading] = useState(false);
     const [uploadLoading, setUploadLoading] = useState(false);
     const [uploadError, setUploadError] = useState(null);
@@ -21,7 +21,7 @@ function ChatWindow() {
             setCurrentPrompt("");
             setReply(null);
         }
-    }, [reply]);
+    }, [reply, currentPrompt, setPrevChats, setReply]);
 
     // Handle file upload
     const handleFileUpload = async (file) => {

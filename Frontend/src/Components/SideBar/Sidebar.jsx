@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useCallback } from "react";
 import { MyContext } from "../../MyContext";
 import { v4 as uuidv4 } from "uuid";
 import "./Sidebar.css"
@@ -7,7 +7,7 @@ import "./Sidebar.css"
 function Sidebar() {
     const { threads, setThreads, threadId, setThreadId, setNewChat, setPrompt, setReply, setPrevChats, prevChats } = useContext(MyContext);
 
-    const getAllThreads = async () => {
+    const getAllThreads = useCallback(async () => {
         try {
             const response = await fetch("http://localhost:3000/api/thread");
             const data = await response.json();
@@ -16,7 +16,7 @@ function Sidebar() {
         } catch (error) {
             console.error("Error fetching threads:", error);
         }
-    };
+    }, [setThreads]);
 
     const createNewChat = () => {
         setNewChat(true);
@@ -73,7 +73,7 @@ function Sidebar() {
 
     useEffect(() => {
         getAllThreads();
-    }, [threadId, prevChats]);
+    }, [threadId, prevChats, getAllThreads]);
 
     return (
         <div className="sidebar">
