@@ -184,58 +184,6 @@ POST /api/chat
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
-## 🐳 Docker Deployment
-
-### Local Development with Docker Compose
-
-```bash
-# Start all services (MongoDB, Backend, Frontend)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes
-docker-compose down -v
-```
-
-Access the app at `http://localhost` (Frontend) and `http://localhost:3000` (Backend API)
-
-### Build Individual Images
-
-```bash
-# Backend
-cd Backend
-docker build -t ai-resume-backend .
-docker run -p 3000:3000 --env-file .env ai-resume-backend
-
-# Frontend
-cd Frontend
-docker build -t ai-resume-frontend .
-docker run -p 80:80 ai-resume-frontend
-```
-
-## 🚀 CI/CD Pipeline
-
-### Continuous Integration (CI)
-- Triggers on push/PR to `main` branch
-- Runs linting and tests for both Backend and Frontend
-- Builds Docker images to verify they work
-- Uploads frontend build artifacts
-
-### Continuous Deployment (CD)
-Two deployment options available:
-
-**Option 1: Google Cloud Run** (`.github/workflows/cd-cloud-run.yml`)
-- Pushes images to Google Container Registry
-- Deploys to Cloud Run with auto-scaling
-
-**Option 2: Docker Hub** (`.github/workflows/cd-dockerhub.yml`)
-- Pushes images to Docker Hub
-- Use for any cloud provider (AWS, DigitalOcean, etc.)
 
 ### Required GitHub Secrets
 
@@ -265,17 +213,7 @@ Two deployment options available:
 - HTTP request logging (method, URL, status, duration)
 - Error tracking with stack traces
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the ISC License.
 
 ## 👤 Author
 
