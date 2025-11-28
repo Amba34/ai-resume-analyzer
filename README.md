@@ -1,6 +1,6 @@
 # AI Resume Analyzer
 
-A full-stack AI-powered resume analysis application. Upload your resume (PDF/Image) and get instant scoring, feedback, and improvement suggestions. Built with React, Node.js, Express, MongoDB, Google Gemini AI, and Google Cloud Vision OCR.
+ full-stack AI-powered resume analysis application. Upload your resume (PDF/Image) and get instant scoring, feedback, and improvement suggestions. Built with React, Node.js, Express, MongoDB, Google Gemini AI, and Google Cloud Vision OCR.
 
 ## 🚀 Features
 
