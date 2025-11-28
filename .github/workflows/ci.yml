@@ -1,0 +1,59 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Backend CI
+  backend-ci:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: Backend/package-lock.json
+    
+    - name: Install Backend Dependencies
+      working-directory: ./Backend
+      run: npm ci
+    
+    - name: Check Backend Compilation
+      working-directory: ./Backend
+      run: node --check index.js
+    
+    - name: Run Backend Tests
+      working-directory: ./Backend
+      run: npm test
+
+  # Frontend CI
+  frontend-ci:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: next-frontend/package-lock.json
+    
+    - name: Install Frontend Dependencies
+      working-directory: ./next-frontend
+      run: npm ci
+    
+    - name: Build Frontend
+      working-directory: ./next-frontend
+      run: npm run build
+      env:
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:3000
+        JWT_SECRET: test-secret-key

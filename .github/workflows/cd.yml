@@ -1,0 +1,47 @@
+name: CD Pipeline (Disabled)
+
+on:
+  # Disabled - uncomment to enable
+  # push:
+  #   branches: [ main ]
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  # Backend Deployment
+  deploy-backend:
+    runs-on: ubuntu-latest
+    if: false  # Disabled
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to Railway
+      run: echo "Backend deployment disabled"
+      # Uncomment and configure when ready:
+      # - name: Install Railway CLI
+      #   run: npm install -g @railway/cli
+      # 
+      # - name: Deploy Backend
+      #   working-directory: ./Backend
+      #   run: railway up
+      #   env:
+      #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  # Frontend Deployment
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    if: false  # Disabled
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to Vercel
+      run: echo "Frontend deployment disabled"
+      # Uncomment and configure when ready:
+      # - name: Deploy to Vercel
+      #   working-directory: ./next-frontend
+      #   run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+      #   env:
+      #     VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      #     VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      #     VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
