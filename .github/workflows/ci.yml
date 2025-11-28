@@ -17,7 +17,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '18'
+        node-version: '22.15.1'
         cache: 'npm'
         cache-dependency-path: Backend/package-lock.json
     
@@ -43,7 +43,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '18'
+        node-version: '22.15.1'
         cache: 'npm'
         cache-dependency-path: next-frontend/package-lock.json
     
